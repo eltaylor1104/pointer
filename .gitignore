@@ -10,4 +10,7 @@
 /Properties
 /.gradle
 /build
+/.idea
+/gradle
+token.propConfs
 
