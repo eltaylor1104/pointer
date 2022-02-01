@@ -7,5 +7,6 @@
 /dataSources/
 /dataSources.local.xml
 *.propConfs
-Properties
-
+/Properties
+/.gradle
+/build
