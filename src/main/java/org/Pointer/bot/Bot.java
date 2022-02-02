@@ -4,29 +4,36 @@ import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.Member;
-import net.dv8tion.jda.api.entities.MessageChannel;
 import net.dv8tion.jda.api.entities.User;
+import net.dv8tion.jda.api.events.guild.GuildJoinEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
-import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.InteractionHook;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.OptionData;
-import net.dv8tion.jda.api.interactions.components.buttons.Button;
 import net.dv8tion.jda.api.requests.GatewayIntent;
 import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.security.auth.login.LoginException;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.Date;
 import java.util.EnumSet;
 import java.util.Properties;
 
 import static net.dv8tion.jda.api.interactions.commands.OptionType.*;
 
+
 public class Bot extends ListenerAdapter {
+    private static final Logger logger = LoggerFactory.getLogger(Bot.class);
 
     public static void main(String[] arguments) throws InterruptedException, LoginException
     {
@@ -68,10 +75,6 @@ public class Bot extends ListenerAdapter {
         );
 
         commands.addCommands(
-                Commands.slash("prune", "Prune messages from this channel")
-                        .addOption(INTEGER, "amount", "How many messages to prune (Default 100)") // simple optional argument
-        );
-        commands.addCommands(
                 Commands.slash("ping", "Get the latency of the bot")
         );
 
@@ -99,9 +102,6 @@ public class Bot extends ListenerAdapter {
             case "leave":
                 leave(event);
                 break;
-            case "prune": // 2 stage command with a button prompt
-                prune(event);
-                break;
             case "ping":
                 ping(event);
                 break;
@@ -112,29 +112,29 @@ public class Bot extends ListenerAdapter {
     }
 
     @Override
-    public void onButtonInteraction(ButtonInteractionEvent event)
-    {
-        String[] id = event.getComponentId().split(":"); // this is the custom id we specified in our button
-        String authorId = id[0];
-        String type = id[1];
-        // Check that the button is for the user that clicked it, otherwise just ignore the event (let interaction fail)
-        if (!authorId.equals(event.getUser().getId()))
-            return;
-        event.deferEdit().queue(); // acknowledge the button was clicked, otherwise the interaction will fail
 
-        MessageChannel channel = event.getChannel();
-        switch (type)
-        {
-            case "prune":
-                int amount = Integer.parseInt(id[2]);
-                event.getChannel().getIterableHistory()
-                        .skipTo(event.getMessageIdLong())
-                        .takeAsync(amount)
-                        .thenAccept(channel::purgeMessages);
-                // fallthrough delete the prompt message with our buttons
-            case "delete":
-                event.getHook().deleteOriginal().queue();
+    public void onGuildJoin(GuildJoinEvent event){
+        DatabaseManager dbm = new DatabaseManager();
+        String sql = "insert into settings (guild_id, join_date) values (?, ?)";
+
+        try (PreparedStatement ps = dbm.connect().prepareStatement(sql);){
+            ps.setLong(1, event.getGuild().getIdLong());
+            Instant in = Instant.now();
+            Date d = Date.from(in);
+            ps.setTimestamp(2, new Timestamp(d.getTime()));
+            int i = ps.executeUpdate();
+            if (i > 0)
+                System.out.println("New guild inserted");
+            else
+                System.out.println("Guild not inserted.");
+
+        } catch (SQLException e) {
+            logger.error("SQL ", e);
+            e.printStackTrace();
+        } finally {
+            dbm.disconnect();
         }
+
     }
 
     public void ban(SlashCommandInteractionEvent event, User user, Member member)
@@ -186,23 +186,10 @@ public class Bot extends ListenerAdapter {
                     .queue();
     }
 
-    public void prune(SlashCommandInteractionEvent event)
-    {
-        OptionMapping amountOption = event.getOption("amount"); // This is configured to be optional so check for null
-        int amount = amountOption == null
-                ? 100 // default 100
-                : (int) Math.min(200, Math.max(2, amountOption.getAsLong())); // enforcement: must be between 2-200
-        String userId = event.getUser().getId();
-        event.reply("This will delete " + amount + " messages.\nAre you sure?") // prompt the user with a button menu
-                .addActionRow(// this means "<style>(<id>, <label>)", you can encode anything you want in the id (up to 100 characters)
-                        Button.secondary(userId + ":delete", "Nevermind!"),
-                        Button.danger(userId + ":prune:" + amount, "Yes!")) // the first parameter is the component id we use in onButtonInteraction above
-                .queue();
-    }
 
     public void ping(SlashCommandInteractionEvent event)
     {
-        event.reply("Pong! :ping_pong: My latency is:" + event.getJDA().getGatewayPing()).setEphemeral(true).queue();
+        event.reply("Pong! :ping_pong: My latency is: " + event.getJDA().getGatewayPing() + "ms").setEphemeral(true).queue();
     }
 
 
