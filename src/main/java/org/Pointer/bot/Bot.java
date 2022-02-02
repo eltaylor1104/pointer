@@ -71,6 +71,9 @@ public class Bot extends ListenerAdapter {
                 Commands.slash("prune", "Prune messages from this channel")
                         .addOption(INTEGER, "amount", "How many messages to prune (Default 100)") // simple optional argument
         );
+        commands.addCommands(
+                Commands.slash("ping", "Get the latency of the bot")
+        );
 
         // Send the new set of commands to discord, this will override any existing global commands with the new set provided here
         commands.queue();
@@ -99,6 +102,10 @@ public class Bot extends ListenerAdapter {
             case "prune": // 2 stage command with a button prompt
                 prune(event);
                 break;
+            case "ping":
+                ping(event);
+                break;
+
             default:
                 event.reply("I can't handle that command right now :(").setEphemeral(true).queue();
         }
@@ -192,6 +199,13 @@ public class Bot extends ListenerAdapter {
                         Button.danger(userId + ":prune:" + amount, "Yes!")) // the first parameter is the component id we use in onButtonInteraction above
                 .queue();
     }
+
+    public void ping(SlashCommandInteractionEvent event)
+    {
+        event.reply("Pong! :ping_pong: My latency is:" + event.getJDA().getGatewayPing()).setEphemeral(true).queue();
+    }
+
+
 
 
 }
